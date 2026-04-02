@@ -3,7 +3,7 @@
 // ── Configuration ────────────────────────────────────────────────────────────
 // Set this to the activation transaction txid once the transaction is generated.
 // Leave empty ('') to hide the activation transaction status box.
-const ACTIVATION_TXID = 'b91722faffbea406986690fa430f916f625eb81eb4e57bfd55dbd54dca5e8d22';
+const ACTIVATION_TXID = 'acd2840906af9f9976bd9e1b607f10dfb640f2fbf638cab6ae509f2da0c9670f';
 
 const TARGET_BLOCK = 943816;
 const FALLBACK_BLOCK_TIME = 600; // seconds
@@ -115,7 +115,13 @@ function renderBlockInfo({ currentHeight, blocksRemaining, estimatedDateStr }) {
         document.getElementById('current-height').textContent = currentHeight.toLocaleString();
     }
     document.getElementById('blocks-remaining').textContent = blocksRemaining.toLocaleString();
-    document.getElementById('estimated-datetime').textContent = estimatedDateStr;
+    if (typeof estimatedDateStr === 'object') {
+        document.getElementById('estimated-datetime-local').textContent = estimatedDateStr.local + ' (your local time)';
+        document.getElementById('estimated-datetime-utc').textContent = estimatedDateStr.utc;
+    } else {
+        document.getElementById('estimated-datetime-local').textContent = estimatedDateStr;
+        document.getElementById('estimated-datetime-utc').textContent = '';
+    }
 }
 
 function renderActivated() {
@@ -148,14 +154,24 @@ function renderApiNotice(isLive, lastUpdated) {
 
 function formatDatetime(timestamp) {
     const d = new Date(timestamp);
-    return d.toLocaleString('en-US', {
-        month:    'long',
-        day:      'numeric',
-        year:     'numeric',
-        hour:     'numeric',
-        minute:   '2-digit',
+    const utc = d.toLocaleString('en-US', {
+        month:     'long',
+        day:       'numeric',
+        year:      'numeric',
+        hour:      'numeric',
+        minute:    '2-digit',
+        timeZone:  'UTC',
         timeZoneName: 'short',
     }) + ' (estimate)';
+    const local = d.toLocaleString(undefined, {
+        month:     'long',
+        day:       'numeric',
+        year:      'numeric',
+        hour:      'numeric',
+        minute:    '2-digit',
+        timeZoneName: 'short',
+    });
+    return { utc, local };
 }
 
 // ── Initialisation ───────────────────────────────────────────────────────────
@@ -221,7 +237,7 @@ async function fetchTxStatus(txid) {
     const data = await resp.json();
     const blockheight = data.blockheight;
     if (blockheight && blockheight > 0) {
-        return { confirmed: true, blockheight };
+        return { confirmed: true, blockheight, confirmations: data.confirmations ?? 1 };
     }
     return 'mempool';
 }
@@ -231,7 +247,6 @@ function renderTxStatus(status) {
     const card = document.querySelector('.tx-status-card');
     if (!el || !card) return;
 
-    // Clear all state classes
     card.classList.remove('tx-not-broadcast', 'tx-mempool', 'tx-confirmed');
 
     if (status === 'not_broadcast') {
@@ -241,32 +256,26 @@ function renderTxStatus(status) {
         el.textContent = 'In mempool — awaiting confirmation';
         card.classList.add('tx-mempool');
     } else if (status?.confirmed) {
-        el.textContent = `Confirmed in block ${status.blockheight.toLocaleString()}`;
+        const conf = status.confirmations;
+        el.textContent = `Confirmed in block ${status.blockheight.toLocaleString()} — ${conf.toLocaleString()} confirmation${conf === 1 ? '' : 's'}`;
         card.classList.add('tx-confirmed');
     }
 }
 
 function startTxPolling(txid) {
-    let pollingInterval = null;
-
     async function poll() {
         const errorEl = document.getElementById('tx-check-error');
         try {
             const status = await fetchTxStatus(txid);
             renderTxStatus(status);
             if (errorEl) errorEl.style.display = 'none';
-            // Stop polling once confirmed
-            if (status?.confirmed && pollingInterval) {
-                clearInterval(pollingInterval);
-                pollingInterval = null;
-            }
         } catch {
             if (errorEl) errorEl.style.display = '';
         }
     }
 
     poll();
-    pollingInterval = setInterval(poll, TX_POLL_INTERVAL);
+    setInterval(poll, TX_POLL_INTERVAL);
 }
 
 // 4.5 — Initialise tx status on page load
