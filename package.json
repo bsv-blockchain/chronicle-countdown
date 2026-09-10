@@ -7,6 +7,6 @@
     "build-tx": "node build-tx.js"
   },
   "dependencies": {
-    "@bsv/sdk": "^1.1.0"
+    "@bsv/sdk": "^2.5.0"
   }
 }
